@@ -35,16 +35,17 @@ Edit the generated `amber.config.json`:
 
 ```json
 {
-  "project": "TAN portal",
+  "project": "My Website",
   "outDir": ".amber",
   "viewport": { "width": 1440, "height": 900 },
   "pages": [
-    { "id": "portal-home", "url": "http://localhost:8080/", "waitFor": "networkidle" }
+    { "id": "home", "url": "http://localhost:3000/", "waitFor": "networkidle" },
+    { "id": "dashboard", "url": "http://localhost:3000/dashboard", "viewport": { "width": 390, "height": 844 } }
   ]
 }
 ```
 
-Page options: `waitFor` (Playwright wait state, default `networkidle`), `delayMs` (extra settle time after load), `fullPage` (capture the full scroll height).
+The top-level `viewport` sets the capture size for every page; a page can override it with its own `viewport`. Other page options: `waitFor` (Playwright wait state, default `networkidle`), `delayMs` (extra settle time after load), `fullPage` (capture the full scroll height).
 
 Then, whenever the project is worth remembering:
 
@@ -61,7 +62,7 @@ amber view
 Render a page's frames to a shareable clip:
 
 ```
-amber export --page portal-home --format gif --fps 2
+amber export --page home --format gif --fps 2
 ```
 
 ## Output layout
@@ -72,7 +73,7 @@ Everything lands under `outDir` (default `.amber`):
 .amber/
   manifest.json
   frames/
-    portal-home/
+    home/
       20260904T120000Z-abc1234.png
 ```
 
