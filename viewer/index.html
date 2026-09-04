@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amber</title>
+<style>
+  :root {
+    --bg: #1c1712;
+    --panel: #2a2118;
+    --amber: #e8a33d;
+    --amber-dim: #9c7134;
+    --text: #e9ddc8;
+    --muted: #8f8270;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--amber-dim);
+  }
+  header h1 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--amber);
+    letter-spacing: 0.06em;
+  }
+  header .project { color: var(--muted); }
+  nav {
+    display: flex;
+    gap: 8px;
+    padding: 10px 20px 0;
+    flex-wrap: wrap;
+  }
+  nav button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--amber-dim);
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font: inherit;
+  }
+  nav button.active {
+    background: var(--amber);
+    color: var(--bg);
+    border-color: var(--amber);
+  }
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px;
+    gap: 12px;
+  }
+  #stage {
+    max-width: 100%;
+    max-height: 70vh;
+    border: 1px solid var(--amber-dim);
+    border-radius: 4px;
+    background: #000;
+  }
+  #meta {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  #meta .commit { color: var(--amber); }
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: min(900px, 100%);
+  }
+  #controls input[type="range"] {
+    flex: 1;
+    accent-color: var(--amber);
+  }
+  #controls button {
+    background: var(--panel);
+    color: var(--amber);
+    border: 1px solid var(--amber-dim);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font: inherit;
+    min-width: 64px;
+  }
+  #empty { color: var(--muted); margin-top: 40px; }
+  footer {
+    padding: 8px 20px;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>AMBER</h1>
+  <span class="project" id="project"></span>
+</header>
+<nav id="pages"></nav>
+<main>
+  <img id="stage" alt="captured frame" hidden>
+  <div id="meta"></div>
+  <div id="controls" hidden>
+    <button id="play">Play</button>
+    <input id="scrub" type="range" min="0" max="0" value="0" step="1">
+    <span id="counter"></span>
+  </div>
+  <div id="empty" hidden>No frames yet. Run "amber capture" and refresh.</div>
+</main>
+<footer>Scrub with the slider or arrow keys. Space toggles play.</footer>
+<script>
+(async function () {
+  const stage = document.getElementById("stage");
+  const meta = document.getElementById("meta");
+  const scrub = document.getElementById("scrub");
+  const counter = document.getElementById("counter");
+  const playBtn = document.getElementById("play");
+  const controls = document.getElementById("controls");
+  const empty = document.getElementById("empty");
+  const nav = document.getElementById("pages");
+
+  let manifest;
+  try {
+    manifest = await (await fetch("manifest.json")).json();
+  } catch {
+    empty.hidden = false;
+    empty.textContent = "Could not load manifest.json.";
+    return;
+  }
+  document.getElementById("project").textContent = manifest.project || "";
+
+  const byPage = new Map();
+  for (const frame of manifest.frames || []) {
+    if (!byPage.has(frame.pageId)) byPage.set(frame.pageId, []);
+    byPage.get(frame.pageId).push(frame);
+  }
+  for (const frames of byPage.values()) {
+    frames.sort((a, b) => a.ts.localeCompare(b.ts));
+  }
+
+  if (byPage.size === 0) {
+    empty.hidden = false;
+    return;
+  }
+
+  let currentPage = byPage.keys().next().value;
+  let index = 0;
+  let timer = null;
+
+  function frames() { return byPage.get(currentPage); }
+
+  function render() {
+    const list = frames();
+    const frame = list[index];
+    stage.src = frame.file;
+    stage.hidden = false;
+    controls.hidden = false;
+    scrub.max = String(list.length - 1);
+    scrub.value = String(index);
+    counter.textContent = `${index + 1} / ${list.length}`;
+    const when = new Date(frame.ts).toLocaleString();
+    const commit = frame.commit
+      ? ` <span class="commit">${frame.commit}</span>${frame.branch ? " on " + frame.branch : ""}`
+      : "";
+    meta.innerHTML = `${when}${commit}`;
+  }
+
+  function stop() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    playBtn.textContent = "Play";
+  }
+
+  function play() {
+    if (frames().length < 2) return;
+    playBtn.textContent = "Pause";
+    timer = setInterval(() => {
+      index = (index + 1) % frames().length;
+      render();
+      if (index === frames().length - 1) stop();
+    }, 500);
+  }
+
+  for (const pageId of byPage.keys()) {
+    const btn = document.createElement("button");
+    btn.textContent = pageId;
+    btn.addEventListener("click", () => {
+      stop();
+      currentPage = pageId;
+      index = frames().length - 1;
+      nav.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      render();
+    });
+    nav.appendChild(btn);
+  }
+  nav.querySelector("button").classList.add("active");
+
+  playBtn.addEventListener("click", () => (timer ? stop() : play()));
+  scrub.addEventListener("input", () => {
+    stop();
+    index = Number(scrub.value);
+    render();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") { stop(); index = Math.max(0, index - 1); render(); }
+    if (e.key === "ArrowRight") { stop(); index = Math.min(frames().length - 1, index + 1); render(); }
+    if (e.key === " ") { e.preventDefault(); timer ? stop() : play(); }
+  });
+
+  index = frames().length - 1;
+  render();
+})();
+</script>
+</body>
+</html>
